@@ -14,23 +14,20 @@ import org.springframework.security.web.SecurityFilterChain;
 @EnableWebSecurity
 public class SecurityConfig {
 
-    // 1. Tell Spring to use BCrypt for hashing passwords
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
 
-    // 2. Configure HTTP Security rules
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                .csrf(AbstractHttpConfigurer::disable) // Disable CSRF for REST API
+                .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**").permitAll() // Allow anyone to access Auth API
-                        .anyRequest().authenticated() // All other APIs (Tasks) still require login
+                        .requestMatchers("/api/v1/auth/**").permitAll() // Updated to /v1
+                        .anyRequest().authenticated()
                 )
-                .httpBasic(Customizer.withDefaults()); // Keep basic auth for now to test locked endpoints
-
+                .httpBasic(Customizer.withDefaults());
         return http.build();
     }
 }
