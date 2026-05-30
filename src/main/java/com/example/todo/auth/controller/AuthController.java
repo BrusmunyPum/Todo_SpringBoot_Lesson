@@ -1,6 +1,9 @@
 package com.example.todo.auth.controller;
 
+import com.example.todo.auth.dto.request.LoginRequest;
 import com.example.todo.auth.dto.request.RegisterRequest;
+import com.example.todo.auth.dto.response.LoginResponse;
+import com.example.todo.auth.dto.response.RegisterResponse;
 import com.example.todo.auth.service.AuthService;
 import com.example.todo.user.entity.AppUser;
 import jakarta.validation.Valid;
@@ -19,10 +22,23 @@ public class AuthController {
     }
 
     @PostMapping("/register")
-    public ResponseEntity<String> register(@Valid @RequestBody RegisterRequest request) {
+    public ResponseEntity<RegisterResponse> register(
+            @Valid @RequestBody RegisterRequest request
+    ) {
         AppUser newUser = authService.register(request);
-        return ResponseEntity
-                .status(HttpStatus.CREATED)
-                .body("User registered successfully with ID: " + newUser.getId());
+        RegisterResponse response = new RegisterResponse(
+                newUser.getId(),
+                newUser.getUsername(),
+                newUser.getEmail()
+        );
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @PostMapping("/login")
+    public ResponseEntity<LoginResponse> login(
+            @Valid @RequestBody LoginRequest request
+    ) {
+        LoginResponse response = authService.login(request);
+        return ResponseEntity.ok(response);
     }
 }
