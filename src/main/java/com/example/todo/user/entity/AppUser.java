@@ -28,6 +28,11 @@ public class AppUser extends BaseEntity implements UserDetails {
     @Column(nullable = false)
     private String password;
 
+    // Role stored as a string in the database (e.g. "USER" or "ADMIN")
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private UserRole role = UserRole.USER;
+
     @OneToMany(mappedBy = "user", fetch = FetchType.LAZY)
     private List<Task> tasks = new ArrayList<>();
 
@@ -37,15 +42,16 @@ public class AppUser extends BaseEntity implements UserDetails {
         this.username = username;
         this.email = email;
         this.password = password;
+        this.role = UserRole.USER; // all new users are USER by default
     }
 
     // --- UserDetails methods ---
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        // Every user has ROLE_USER for now.
-        // In a future lesson we will add a real Role entity.
-        return List.of(new SimpleGrantedAuthority("ROLE_USER"));
+        // "ROLE_USER" or "ROLE_ADMIN"
+        // Spring Security requires the "ROLE_" prefix for hasRole() to work
+        return List.of(new SimpleGrantedAuthority("ROLE_" + role.name()));
     }
 
     @Override
@@ -54,13 +60,13 @@ public class AppUser extends BaseEntity implements UserDetails {
     @Override
     public String getUsername() { return username; }
 
-    // Spring Security 6+ has default implementations returning true for the
-    // four boolean methods below, so we only override when we need custom logic.
-
     // --- Regular getters ---
 
     public Long getId() { return id; }
     public String getEmail() { return email; }
+    public UserRole getRole() { return role; }
     public List<Task> getTasks() { return tasks; }
+
     public void setPassword(String password) { this.password = password; }
+    public void setRole(UserRole role) { this.role = role; }
 }

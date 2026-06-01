@@ -1,0 +1,563 @@
+{
+  "info": {
+    "name": "Todo API — Spring Boot 4 (Full Flow)",
+    "description": "Complete test collection.\n\nOrder to run:\n1. Register\n2. Login (token auto-saved)\n3. Me endpoints\n4. Create Task\n5. Task CRUD\n6. Comments\n7. Admin tests (need ROLE_ADMIN in DB first)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{"key": "token", "value": "{{token}}", "type": "string"}]
+  },
+  "item": [
+
+    {
+      "name": "🔐 1. Auth",
+      "item": [
+        {
+          "name": "Register (no auth needed)",
+          "auth": {"type": "noauth"},
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"muny\",\n  \"email\": \"muny@example.com\",\n  \"password\": \"secret123\"\n}"
+            },
+            "url": {"raw": "{{base_url}}/api/v1/auth/register", "host": ["{{base_url}}"], "path": ["api","v1","auth","register"]}
+          },
+          "event": [{
+            "listen": "test",
+            "script": {"exec": [
+              "pm.test('201 Created', () => pm.response.to.have.status(201));",
+              "const b = pm.response.json();",
+              "pm.test('Has id, username, email', () => {",
+              "  pm.expect(b).to.have.property('id');",
+              "  pm.expect(b).to.have.property('username');",
+              "  pm.expect(b).to.have.property('email');",
+              "});",
+              "if (b.id) pm.environment.set('user_id', b.id);"
+            ]}
+          }]
+        },
+        {
+          "name": "Login (no auth needed)",
+          "auth": {"type": "noauth"},
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"muny\",\n  \"password\": \"secret123\"\n}"
+            },
+            "url": {"raw": "{{base_url}}/api/v1/auth/login", "host": ["{{base_url}}"], "path": ["api","v1","auth","login"]}
+          },
+          "event": [{
+            "listen": "test",
+            "script": {"exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "const b = pm.response.json();",
+              "pm.test('Has accessToken', () => pm.expect(b).to.have.property('accessToken'));",
+              "pm.test('tokenType is Bearer', () => pm.expect(b.tokenType).to.eql('Bearer'));",
+              "if (b.accessToken) {",
+              "  pm.environment.set('token', b.accessToken);",
+              "  console.log('✅ Token saved');",
+              "}"
+            ]}
+          }]
+        },
+        {
+          "name": "Login — Wrong Password → 401",
+          "auth": {"type": "noauth"},
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"muny\",\n  \"password\": \"wrongpassword\"\n}"
+            },
+            "url": {"raw": "{{base_url}}/api/v1/auth/login", "host": ["{{base_url}}"], "path": ["api","v1","auth","login"]}
+          },
+          "event": [{
+            "listen": "test",
+            "script": {"exec": [
+              "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));",
+              "pm.test('Message is Invalid username or password', () => {",
+              "  pm.expect(pm.response.json().message).to.include('Invalid');",
+              "});"
+            ]}
+          }]
+        },
+        {
+          "name": "Register — Duplicate Username → 409",
+          "auth": {"type": "noauth"},
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"muny\",\n  \"email\": \"muny2@example.com\",\n  \"password\": \"secret123\"\n}"
+            },
+            "url": {"raw": "{{base_url}}/api/v1/auth/register", "host": ["{{base_url}}"], "path": ["api","v1","auth","register"]}
+          },
+          "event": [{
+            "listen": "test",
+            "script": {"exec": [
+              "pm.test('409 Conflict — duplicate username', () => pm.response.to.have.status(409));"
+            ]}
+          }]
+        },
+        {
+          "name": "Register — Validation Error → 400",
+          "auth": {"type": "noauth"},
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"\",\n  \"email\": \"not-an-email\",\n  \"password\": \"12\"\n}"
+            },
+            "url": {"raw": "{{base_url}}/api/v1/auth/register", "host": ["{{base_url}}"], "path": ["api","v1","auth","register"]}
+          },
+          "event": [{
+            "listen": "test",
+            "script": {"exec": [
+              "pm.test('400 Bad Request', () => pm.response.to.have.status(400));",
+              "pm.test('Has validation errors', () => {",
+              "  const b = pm.response.json();",
+              "  pm.expect(b).to.have.property('errors');",
+              "});"
+            ]}
+          }]
+        },
+        {
+          "name": "No Token → 401",
+          "auth": {"type": "noauth"},
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {"raw": "{{base_url}}/api/v1/tasks", "host": ["{{base_url}}"], "path": ["api","v1","tasks"]}
+          },
+          "event": [{
+            "listen": "test",
+            "script": {"exec": [
+              "pm.test('401 — no token provided', () => pm.response.to.have.status(401));"
+            ]}
+          }]
+        }
+      ]
+    },
+
+    {
+      "name": "👤 2. Me (any logged-in user)",
+      "item": [
+        {
+          "name": "GET /me — My Profile",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {"raw": "{{base_url}}/api/v1/users/me", "host": ["{{base_url}}"], "path": ["api","v1","users","me"]}
+          },
+          "event": [{
+            "listen": "test",
+            "script": {"exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "const b = pm.response.json();",
+              "pm.test('Has id, username, email', () => {",
+              "  pm.expect(b).to.have.property('id');",
+              "  pm.expect(b).to.have.property('username');",
+              "  pm.expect(b).to.have.property('email');",
+              "});",
+              "if (b.id) pm.environment.set('user_id', b.id);"
+            ]}
+          }]
+        },
+        {
+          "name": "GET /me/detail — My Detail + Task Count",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {"raw": "{{base_url}}/api/v1/users/me/detail", "host": ["{{base_url}}"], "path": ["api","v1","users","me","detail"]}
+          },
+          "event": [{
+            "listen": "test",
+            "script": {"exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "pm.test('Has taskCount', () => pm.expect(pm.response.json()).to.have.property('taskCount'));"
+            ]}
+          }]
+        },
+        {
+          "name": "GET /me/tasks — My Tasks (paginated)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/me/tasks?page=0&size=5",
+              "host": ["{{base_url}}"],
+              "path": ["api","v1","users","me","tasks"],
+              "query": [{"key":"page","value":"0"},{"key":"size","value":"5"}]
+            }
+          },
+          "event": [{
+            "listen": "test",
+            "script": {"exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "pm.test('Has pagination fields', () => {",
+              "  const b = pm.response.json();",
+              "  pm.expect(b).to.have.property('content');",
+              "  pm.expect(b).to.have.property('totalElements');",
+              "});"
+            ]}
+          }]
+        },
+        {
+          "name": "GET /me/tasks/completed — My Completed Tasks",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {"raw": "{{base_url}}/api/v1/users/me/tasks/completed", "host": ["{{base_url}}"], "path": ["api","v1","users","me","tasks","completed"]}
+          },
+          "event": [{"listen": "test","script": {"exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"]}}]
+        }
+      ]
+    },
+
+    {
+      "name": "🔒 3. Admin Endpoints (needs ROLE_ADMIN)",
+      "item": [
+        {
+          "name": "GET /users — All Users [ADMIN only]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {"raw": "{{base_url}}/api/v1/users", "host": ["{{base_url}}"], "path": ["api","v1","users"]}
+          },
+          "event": [{
+            "listen": "test",
+            "script": {"exec": [
+              "pm.test('200 if ADMIN, 403 if USER', () => {",
+              "  pm.expect(pm.response.code).to.be.oneOf([200, 403]);",
+              "});",
+              "if (pm.response.code === 200) {",
+              "  pm.test('Returns array', () => pm.expect(pm.response.json()).to.be.an('array'));",
+              "}",
+              "if (pm.response.code === 403) {",
+              "  console.log('⛔ You need ROLE_ADMIN. Run: UPDATE app_users SET role = \\'ADMIN\\' WHERE username = \\'muny\\';');",
+              "  pm.test('403 message correct', () => {",
+              "    pm.expect(pm.response.json().message).to.include('permission');",
+              "  });",
+              "}"
+            ]}
+          }]
+        },
+        {
+          "name": "GET /users/{id} — User By ID [ADMIN only]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {"raw": "{{base_url}}/api/v1/users/{{user_id}}", "host": ["{{base_url}}"], "path": ["api","v1","users","{{user_id}}"]}
+          },
+          "event": [{"listen": "test","script": {"exec": [
+            "pm.test('200 if ADMIN, 403 if USER', () => pm.expect(pm.response.code).to.be.oneOf([200, 403]));"
+          ]}}]
+        },
+        {
+          "name": "GET /users/{id}/detail [ADMIN only]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {"raw": "{{base_url}}/api/v1/users/{{user_id}}/detail", "host": ["{{base_url}}"], "path": ["api","v1","users","{{user_id}}","detail"]}
+          },
+          "event": [{"listen": "test","script": {"exec": [
+            "pm.test('200 if ADMIN, 403 if USER', () => pm.expect(pm.response.code).to.be.oneOf([200, 403]));"
+          ]}}]
+        }
+      ]
+    },
+
+    {
+      "name": "✅ 4. Tasks",
+      "item": [
+        {
+          "name": "POST — Create Task",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Build JWT Authentication\",\n  \"priority\": \"HIGH\",\n  \"dueDate\": \"2026-12-31\",\n  \"userId\": {{user_id}}\n}"
+            },
+            "url": {"raw": "{{base_url}}/api/v1/tasks", "host": ["{{base_url}}"], "path": ["api","v1","tasks"]}
+          },
+          "event": [{
+            "listen": "test",
+            "script": {"exec": [
+              "pm.test('201 Created', () => pm.response.to.have.status(201));",
+              "const b = pm.response.json();",
+              "pm.test('Has id and title', () => {",
+              "  pm.expect(b).to.have.property('id');",
+              "  pm.expect(b).to.have.property('title');",
+              "});",
+              "if (b.id) {",
+              "  pm.environment.set('task_id', b.id);",
+              "  console.log('task_id saved:', b.id);",
+              "}"
+            ]}
+          }]
+        },
+        {
+          "name": "GET — All Tasks (paginated)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/tasks?page=0&size=5&sortBy=id&direction=asc",
+              "host": ["{{base_url}}"],
+              "path": ["api","v1","tasks"],
+              "query": [
+                {"key":"page","value":"0"},{"key":"size","value":"5"},
+                {"key":"sortBy","value":"id"},{"key":"direction","value":"asc"},
+                {"key":"completed","value":"false","disabled":true}
+              ]
+            }
+          },
+          "event": [{"listen": "test","script": {"exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('Has content array', () => pm.expect(pm.response.json().content).to.be.an('array'));"
+          ]}}]
+        },
+        {
+          "name": "GET — Task By ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {"raw": "{{base_url}}/api/v1/tasks/{{task_id}}", "host": ["{{base_url}}"], "path": ["api","v1","tasks","{{task_id}}"]}
+          },
+          "event": [{"listen": "test","script": {"exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('completed is false', () => pm.expect(pm.response.json().completed).to.be.false);"
+          ]}}]
+        },
+        {
+          "name": "GET — Search Tasks",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/tasks/search?title=JWT&priority=HIGH&page=0&size=5",
+              "host": ["{{base_url}}"],
+              "path": ["api","v1","tasks","search"],
+              "query": [
+                {"key":"title","value":"JWT"},{"key":"priority","value":"HIGH"},
+                {"key":"completed","value":"false","disabled":true},
+                {"key":"dueAfter","value":"2026-01-01","disabled":true},
+                {"key":"dueBefore","value":"2026-12-31","disabled":true},
+                {"key":"page","value":"0"},{"key":"size","value":"5"}
+              ]
+            }
+          },
+          "event": [{"listen": "test","script": {"exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));"
+          ]}}]
+        },
+        {
+          "name": "PUT — Full Update Task",
+          "request": {
+            "method": "PUT",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Updated task title\",\n  \"completed\": false,\n  \"priority\": \"MEDIUM\",\n  \"dueDate\": \"2026-12-31\"\n}"
+            },
+            "url": {"raw": "{{base_url}}/api/v1/tasks/{{task_id}}", "host": ["{{base_url}}"], "path": ["api","v1","tasks","{{task_id}}"]}
+          },
+          "event": [{"listen": "test","script": {"exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('Title updated', () => pm.expect(pm.response.json().title).to.eql('Updated task title'));"
+          ]}}]
+        },
+        {
+          "name": "PATCH — Partial Update (title only)",
+          "request": {
+            "method": "PATCH",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Only title changed\"\n}"
+            },
+            "url": {"raw": "{{base_url}}/api/v1/tasks/{{task_id}}", "host": ["{{base_url}}"], "path": ["api","v1","tasks","{{task_id}}"]}
+          },
+          "event": [{"listen": "test","script": {"exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));"
+          ]}}]
+        },
+        {
+          "name": "PATCH — Complete Task",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {"raw": "{{base_url}}/api/v1/tasks/{{task_id}}/complete", "host": ["{{base_url}}"], "path": ["api","v1","tasks","{{task_id}}","complete"]}
+          },
+          "event": [{"listen": "test","script": {"exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('completed is true', () => pm.expect(pm.response.json().completed).to.be.true);"
+          ]}}]
+        },
+        {
+          "name": "PATCH — Complete Again → 409 Conflict",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {"raw": "{{base_url}}/api/v1/tasks/{{task_id}}/complete", "host": ["{{base_url}}"], "path": ["api","v1","tasks","{{task_id}}","complete"]}
+          },
+          "event": [{"listen": "test","script": {"exec": [
+            "pm.test('409 Conflict — already completed', () => pm.response.to.have.status(409));"
+          ]}}]
+        },
+        {
+          "name": "PATCH — Reopen Task",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {"raw": "{{base_url}}/api/v1/tasks/{{task_id}}/reopen", "host": ["{{base_url}}"], "path": ["api","v1","tasks","{{task_id}}","reopen"]}
+          },
+          "event": [{"listen": "test","script": {"exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('completed is false', () => pm.expect(pm.response.json().completed).to.be.false);"
+          ]}}]
+        },
+        {
+          "name": "GET — Task Not Found → 404",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {"raw": "{{base_url}}/api/v1/tasks/99999", "host": ["{{base_url}}"], "path": ["api","v1","tasks","99999"]}
+          },
+          "event": [{"listen": "test","script": {"exec": [
+            "pm.test('404 Not Found', () => pm.response.to.have.status(404));"
+          ]}}]
+        },
+        {
+          "name": "POST — Create Task Validation Error → 400",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"\",\n  \"priority\": null,\n  \"userId\": null\n}"
+            },
+            "url": {"raw": "{{base_url}}/api/v1/tasks", "host": ["{{base_url}}"], "path": ["api","v1","tasks"]}
+          },
+          "event": [{"listen": "test","script": {"exec": [
+            "pm.test('400 Bad Request', () => pm.response.to.have.status(400));",
+            "pm.test('Has errors map', () => pm.expect(pm.response.json()).to.have.property('errors'));"
+          ]}}]
+        },
+        {
+          "name": "DELETE — Delete Task",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {"raw": "{{base_url}}/api/v1/tasks/{{task_id}}", "host": ["{{base_url}}"], "path": ["api","v1","tasks","{{task_id}}"]}
+          },
+          "event": [{"listen": "test","script": {"exec": [
+            "pm.test('204 No Content', () => pm.response.to.have.status(204));"
+          ]}}]
+        }
+      ]
+    },
+
+    {
+      "name": "💬 5. Comments",
+      "item": [
+        {
+          "name": "POST — Create Task (for comment tests)",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Task for comment testing\",\n  \"priority\": \"LOW\",\n  \"dueDate\": \"2026-12-31\",\n  \"userId\": {{user_id}}\n}"
+            },
+            "url": {"raw": "{{base_url}}/api/v1/tasks", "host": ["{{base_url}}"], "path": ["api","v1","tasks"]}
+          },
+          "event": [{"listen": "test","script": {"exec": [
+            "pm.test('201 Created', () => pm.response.to.have.status(201));",
+            "const b = pm.response.json();",
+            "if (b.id) pm.environment.set('task_id', b.id);"
+          ]}}]
+        },
+        {
+          "name": "GET — Get Comments (empty)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {"raw": "{{base_url}}/api/v1/tasks/{{task_id}}/comments", "host": ["{{base_url}}"], "path": ["api","v1","tasks","{{task_id}}","comments"]}
+          },
+          "event": [{"listen": "test","script": {"exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('Empty array', () => pm.expect(pm.response.json()).to.be.an('array'));"
+          ]}}]
+        },
+        {
+          "name": "POST — Create Comment",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"This is my first comment!\"\n}"
+            },
+            "url": {"raw": "{{base_url}}/api/v1/tasks/{{task_id}}/comments", "host": ["{{base_url}}"], "path": ["api","v1","tasks","{{task_id}}","comments"]}
+          },
+          "event": [{"listen": "test","script": {"exec": [
+            "pm.test('201 Created', () => pm.response.to.have.status(201));",
+            "const b = pm.response.json();",
+            "pm.test('Has content', () => pm.expect(b).to.have.property('content'));",
+            "if (b.id) pm.environment.set('comment_id', b.id);"
+          ]}}]
+        },
+        {
+          "name": "GET — Get Comments (has 1)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {"raw": "{{base_url}}/api/v1/tasks/{{task_id}}/comments", "host": ["{{base_url}}"], "path": ["api","v1","tasks","{{task_id}}","comments"]}
+          },
+          "event": [{"listen": "test","script": {"exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('Has 1 comment', () => pm.expect(pm.response.json().length).to.be.greaterThan(0));"
+          ]}}]
+        },
+        {
+          "name": "PUT — Update Comment",
+          "request": {
+            "method": "PUT",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Updated comment content\"\n}"
+            },
+            "url": {"raw": "{{base_url}}/api/v1/tasks/{{task_id}}/comments/{{comment_id}}", "host": ["{{base_url}}"], "path": ["api","v1","tasks","{{task_id}}","comments","{{comment_id}}"]}
+          },
+          "event": [{"listen": "test","script": {"exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('Content updated', () => pm.expect(pm.response.json().content).to.eql('Updated comment content'));"
+          ]}}]
+        },
+        {
+          "name": "DELETE — Delete Comment",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {"raw": "{{base_url}}/api/v1/tasks/{{task_id}}/comments/{{comment_id}}", "host": ["{{base_url}}"], "path": ["api","v1","tasks","{{task_id}}","comments","{{comment_id}}"]}
+          },
+          "event": [{"listen": "test","script": {"exec": [
+            "pm.test('204 No Content', () => pm.response.to.have.status(204));"
+          ]}}]
+        }
+      ]
+    }
+
+  ]
+}

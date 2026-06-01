@@ -41,4 +41,14 @@ public class AuthController {
         LoginResponse response = authService.login(request);
         return ResponseEntity.ok(response);
     }
+
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout() {
+        // JWT is stateless — the server holds no session to destroy.
+        // The real logout happens on the client: delete the token from
+        // localStorage / memory. This endpoint exists so the frontend
+        // has a clean API to call, and so we can add server-side logic
+        // later (e.g. token blacklist) without changing the frontend.
+        return ResponseEntity.noContent().build();
+    }
 }
