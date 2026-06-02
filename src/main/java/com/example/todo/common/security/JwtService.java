@@ -1,6 +1,7 @@
 package com.example.todo.common.security;
 
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
@@ -34,9 +35,16 @@ public class JwtService {
 
     // ─── Validate token ──────────────────────────────────────────────────────
 
+    // A method named "isValid" must NEVER throw — it must return true or false.
+    // JwtException covers: expired, malformed, wrong signature, unsupported, etc.
     public boolean isTokenValid(String token, UserDetails userDetails) {
-        String username = extractUsername(token);
-        return username.equals(userDetails.getUsername()) && !isTokenExpired(token);
+        try {
+            String username = extractUsername(token);
+            return username.equals(userDetails.getUsername()) && !isTokenExpired(token);
+        } catch (JwtException | IllegalArgumentException e) {
+            // Token is expired, malformed, has wrong signature, or is blank
+            return false;
+        }
     }
 
     // ─── Extract data from token ─────────────────────────────────────────────

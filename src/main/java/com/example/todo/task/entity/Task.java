@@ -4,6 +4,7 @@ import com.example.todo.comment.entity.TaskComment;
 import com.example.todo.common.entity.BaseEntity;
 import com.example.todo.user.entity.AppUser;
 import jakarta.persistence.*;
+
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -39,7 +40,11 @@ public class Task extends BaseEntity {
     protected Task() {}
 
     public Task(String title, boolean completed, TaskPriority priority, LocalDate dueDate, AppUser user) {
-        this.title = title; this.completed = completed; this.priority = priority; this.dueDate = dueDate; this.user = user;
+        this.title = title;
+        this.completed = completed;
+        this.priority = priority;
+        this.dueDate = dueDate;
+        this.user = user;
     }
 
     public Long getId() { return id; }

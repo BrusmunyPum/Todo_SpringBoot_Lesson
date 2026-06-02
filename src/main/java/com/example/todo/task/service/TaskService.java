@@ -142,13 +142,6 @@ public class TaskService {
         return taskRepository.save(task);
     }
 
-//    @Transactional
-//    public Task completeTask(Long id) {
-//        Task task = getTaskById(id);
-//        task.setCompleted(true);
-//        return taskRepository.save(task);
-//    }
-
     @Transactional
     public Task completeTask(Long id) {
         Task task = getTaskById(id);

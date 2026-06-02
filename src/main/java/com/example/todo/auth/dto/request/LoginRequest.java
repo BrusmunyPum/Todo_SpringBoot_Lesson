@@ -10,6 +10,15 @@ public class LoginRequest {
     @NotBlank(message = "Password is required")
     private String password;
 
+    // No-arg constructor for Jackson deserialization
+    public LoginRequest() {}
+
+    // All-arg constructor for test code readability
+    public LoginRequest(String username, String password) {
+        this.username = username;
+        this.password = password;
+    }
+
     public String getUsername() { return username; }
     public void setUsername(String username) { this.username = username; }
     public String getPassword() { return password; }

@@ -11,7 +11,15 @@ public class TaskPageResponse {
     private boolean first;
     private boolean last;
 
-    public TaskPageResponse(List<TaskResponse> content, int page, int size, Long totalElements, int totalPages, boolean first, boolean last) {
+    public TaskPageResponse(
+            List<TaskResponse> content,
+            int page,
+            int size,
+            Long totalElements,
+            int totalPages,
+            boolean first,
+            boolean last
+    ) {
         this.content = content;
         this.page = page;
         this.size = size;
@@ -21,29 +29,11 @@ public class TaskPageResponse {
         this.last = last;
     }
 
-    public List<TaskResponse> getContent() {
-        return content;
-    }
-
-    public int getPage() {
-        return page;
-    }
-
-    public int getSize() {
-        return size;
-    }
-
-    public Long getTotalElements() {
-        return totalElements;
-    }
-
-    public boolean isFirst() {
-        return first;
-    }
-
-    public boolean isLast() {
-        return last;
-    }
-
-
+    public List<TaskResponse> getContent() { return content; }
+    public int getPage() { return page; }
+    public int getSize() { return size; }
+    public Long getTotalElements() { return totalElements; }
+    public int getTotalPages() { return totalPages; }   // ← was missing!
+    public boolean isFirst() { return first; }
+    public boolean isLast() { return last; }
 }
