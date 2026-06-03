@@ -11,4 +11,7 @@ public interface UserRepository extends JpaRepository<AppUser, Long> {
 
     // Needed by Spring Security to load user during login
     Optional<AppUser> findByUsername(String username);
+
+    // Used by integration tests to clean up test users between tests
+    void deleteByUsername(String username);
 }
