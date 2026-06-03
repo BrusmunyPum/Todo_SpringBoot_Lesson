@@ -22,6 +22,15 @@ public class UpdateTaskRequest {
     @FutureOrPresent(message = "Due date must be today or in the future")
     private LocalDate dueDate;
 
+    public UpdateTaskRequest() {}
+
+    public UpdateTaskRequest(String title, boolean completed, TaskPriority priority, LocalDate dueDate) {
+        this.title = title;
+        this.completed = completed;
+        this.priority = priority;
+        this.dueDate = dueDate;
+    }
+
     public String getTitle() {
         return title;
     }

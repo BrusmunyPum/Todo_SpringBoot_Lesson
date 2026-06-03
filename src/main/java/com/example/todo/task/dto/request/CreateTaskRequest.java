@@ -13,6 +13,15 @@ public class CreateTaskRequest {
     @NotNull(message = "User ID is required")
     private Long userId;
 
+    public CreateTaskRequest() {}
+
+    public CreateTaskRequest(String title, TaskPriority priority, LocalDate dueDate, Long userId) {
+        this.title = title;
+        this.priority = priority;
+        this.dueDate = dueDate;
+        this.userId = userId;
+    }
+
     // Getters and Setters...
     public String getTitle() { return title; }
     public TaskPriority getPriority() { return priority; }
