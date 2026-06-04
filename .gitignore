@@ -34,3 +34,20 @@ build/
 
 ### Secrets — never commit real credentials ###
 src/main/resources/application.properties
+src/main/resources/application-local.properties
+src/main/resources/application-local.yml
+.env
+.env.local
+*.p12
+*.jks
+*.pem
+*.key
+
+### Logs ###
+*.log
+logs/
+
+### OS ###
+.DS_Store
+Thumbs.db
+desktop.ini

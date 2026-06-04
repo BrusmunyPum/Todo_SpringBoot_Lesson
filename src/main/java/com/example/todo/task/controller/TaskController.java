@@ -7,6 +7,9 @@ import com.example.todo.task.entity.TaskPriority;
 import com.example.todo.task.mapper.TaskMapper;
 import com.example.todo.task.service.TaskService;
 import com.example.todo.user.entity.AppUser;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -22,6 +25,8 @@ import java.time.LocalDate;
 
 @RestController
 @RequestMapping("/api/v1/tasks")
+@Tag(name = "Tasks", description = "Create and manage tasks. Regular users can only access their own tasks; admins can access all.")
+@SecurityRequirement(name = "bearerAuth")
 public class TaskController {
 
     private final TaskService taskService;
@@ -33,10 +38,11 @@ public class TaskController {
     }
 
     // ─── Admin-only list / search ─────────────────────────────────────────────
-    // Regular users access their own tasks via GET /api/v1/users/me/tasks
 
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "List all tasks (admin only)",
+               description = "Returns all tasks across all users. Requires ADMIN role.")
     public ResponseEntity<TaskPageResponse> getAllTasks(
             @RequestParam(required = false) Boolean completed,
             @RequestParam(defaultValue = "0")  @Min(value = 0, message = "Page must be 0 or greater") int page,
@@ -50,23 +56,15 @@ public class TaskController {
 
     @GetMapping("/search")
     @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Search tasks (admin only)",
+               description = "Filter tasks by title, status, priority, or due date range. Requires ADMIN role.")
     public ResponseEntity<TaskPageResponse> searchTasks(
             @RequestParam(required = false) String title,
             @RequestParam(required = false) Boolean completed,
             @RequestParam(required = false) TaskPriority priority,
-
-            @RequestParam(required = false)
-            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
-            LocalDate dueAfter,
-
-            @RequestParam(required = false)
-            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
-            LocalDate dueBefore,
-
-            @RequestParam(required = false)
-            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
-            LocalDate dueDate,
-
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dueAfter,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dueBefore,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dueDate,
             @RequestParam(defaultValue = "0")  @Min(value = 0, message = "Page must be 0 or greater") int page,
             @RequestParam(defaultValue = "5")  @Min(value = 1, message = "Size must be at least 1") @Max(value = 50, message = "Size must not be greater than 50") int size,
             @RequestParam(defaultValue = "id") String sortBy,
@@ -79,9 +77,10 @@ public class TaskController {
         return ResponseEntity.ok(taskMapper.toPageResponse(taskPage));
     }
 
-    // ─── Per-resource endpoints — ownership enforced in service ───────────────
+    // ─── Per-resource endpoints ───────────────────────────────────────────────
 
     @GetMapping("/{id}")
+    @Operation(summary = "Get a task by ID")
     public ResponseEntity<TaskResponse> getTaskById(
             @PathVariable Long id,
             @AuthenticationPrincipal AppUser currentUser
@@ -91,6 +90,8 @@ public class TaskController {
     }
 
     @PostMapping
+    @Operation(summary = "Create a new task",
+               description = "Creates a task owned by the authenticated user.")
     public ResponseEntity<TaskResponse> createTask(
             @AuthenticationPrincipal AppUser currentUser,
             @Valid @RequestBody CreateTaskRequest request
@@ -100,6 +101,7 @@ public class TaskController {
     }
 
     @PutMapping("/{id}")
+    @Operation(summary = "Replace a task (full update)")
     public ResponseEntity<TaskResponse> updateTask(
             @PathVariable Long id,
             @Valid @RequestBody UpdateTaskRequest request,
@@ -110,6 +112,7 @@ public class TaskController {
     }
 
     @PatchMapping("/{id}")
+    @Operation(summary = "Partially update a task")
     public ResponseEntity<TaskResponse> patchTask(
             @PathVariable Long id,
             @Valid @RequestBody PatchTaskRequest request,
@@ -120,6 +123,7 @@ public class TaskController {
     }
 
     @PatchMapping("/{id}/complete")
+    @Operation(summary = "Mark a task as completed")
     public ResponseEntity<TaskResponse> completeTask(
             @PathVariable Long id,
             @AuthenticationPrincipal AppUser currentUser
@@ -129,6 +133,7 @@ public class TaskController {
     }
 
     @PatchMapping("/{id}/reopen")
+    @Operation(summary = "Reopen a completed task")
     public ResponseEntity<TaskResponse> reopenTask(
             @PathVariable Long id,
             @AuthenticationPrincipal AppUser currentUser
@@ -138,6 +143,7 @@ public class TaskController {
     }
 
     @DeleteMapping("/{id}")
+    @Operation(summary = "Delete a task")
     public ResponseEntity<Void> deleteTask(
             @PathVariable Long id,
             @AuthenticationPrincipal AppUser currentUser

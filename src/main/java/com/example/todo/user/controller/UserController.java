@@ -3,6 +3,9 @@ package com.example.todo.user.controller;
 import com.example.todo.task.dto.response.TaskPageResponse;
 import com.example.todo.task.entity.Task;
 import com.example.todo.task.mapper.TaskMapper;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import com.example.todo.task.service.TaskService;
 import com.example.todo.user.dto.response.UserDetailResponse;
 import com.example.todo.user.dto.response.UserResponse;
@@ -21,6 +24,8 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/users")
+@Tag(name = "Users", description = "Current user profile and task views. Admin endpoints for user management.")
+@SecurityRequirement(name = "bearerAuth")
 public class UserController {
 
     private final UserService userService;
@@ -43,6 +48,7 @@ public class UserController {
     // ─── Current user (me) — any authenticated user ──────────────────────────
 
     @GetMapping("/me")
+    @Operation(summary = "Get your own profile")
     public ResponseEntity<UserResponse> getMe(
             @AuthenticationPrincipal AppUser currentUser
     ) {
@@ -50,6 +56,7 @@ public class UserController {
     }
 
     @GetMapping("/me/detail")
+    @Operation(summary = "Get your profile with task stats")
     public ResponseEntity<UserDetailResponse> getMeDetail(
             @AuthenticationPrincipal AppUser currentUser
     ) {
@@ -57,6 +64,7 @@ public class UserController {
     }
 
     @GetMapping("/me/tasks")
+    @Operation(summary = "Get your tasks (paginated)")
     public ResponseEntity<TaskPageResponse> getMyTasks(
             @AuthenticationPrincipal AppUser currentUser,
             @RequestParam(defaultValue = "0") @Min(0) int page,
@@ -71,6 +79,7 @@ public class UserController {
     }
 
     @GetMapping("/me/tasks/completed")
+    @Operation(summary = "Get your completed tasks (paginated)")
     public ResponseEntity<TaskPageResponse> getMyCompletedTasks(
             @AuthenticationPrincipal AppUser currentUser,
             @RequestParam(defaultValue = "0") @Min(0) int page,
@@ -88,24 +97,28 @@ public class UserController {
 
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "List all users (admin only)")
     public ResponseEntity<List<UserResponse>> getAllUsers() {
         return ResponseEntity.ok(userMapper.toResponse(userService.getAllUsers()));
     }
 
     @GetMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Get a user by ID (admin only)")
     public ResponseEntity<UserResponse> getUserById(@PathVariable Long id) {
         return ResponseEntity.ok(userMapper.toResponse(userService.getUserById(id)));
     }
 
     @GetMapping("/{id}/detail")
     @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Get a user's profile with task stats (admin only)")
     public ResponseEntity<UserDetailResponse> getUserDetailById(@PathVariable Long id) {
         return ResponseEntity.ok(userService.getUserDetail(id));
     }
 
     @GetMapping("/{id}/tasks")
     @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Get all tasks for a user (admin only)")
     public ResponseEntity<TaskPageResponse> getTasksByUserId(
             @PathVariable Long id,
             @RequestParam(defaultValue = "0") @Min(0) int page,
@@ -119,6 +132,7 @@ public class UserController {
 
     @GetMapping("/{id}/tasks/completed")
     @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Get completed tasks for a user (admin only)")
     public ResponseEntity<TaskPageResponse> getCompletedTasksByUserId(
             @PathVariable Long id,
             @RequestParam(defaultValue = "0") @Min(0) int page,
