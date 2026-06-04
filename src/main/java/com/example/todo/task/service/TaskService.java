@@ -10,11 +10,13 @@ import com.example.todo.task.entity.TaskPriority;
 import com.example.todo.task.repository.TaskRepository;
 import com.example.todo.task.repository.TaskSpecifications;
 import com.example.todo.user.entity.AppUser;
+import com.example.todo.user.entity.UserRole;
 import com.example.todo.user.service.UserService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,6 +35,8 @@ public class TaskService {
         this.userService = userService;
     }
 
+    // ─── Read ─────────────────────────────────────────────────────────────────
+
     public Page<Task> getAllTasks(
             Boolean completed,
             int page,
@@ -43,11 +47,7 @@ public class TaskService {
         String safeSortBy = validateSortBy(sortBy);
         Sort.Direction safeDirection = validateDirection(direction);
 
-        Pageable pageable = PageRequest.of(
-                page,
-                size,
-                Sort.by(safeDirection, safeSortBy)
-        );
+        Pageable pageable = PageRequest.of(page, size, Sort.by(safeDirection, safeSortBy));
 
         if (completed == null) {
             return taskRepository.findAll(pageable);
@@ -71,130 +71,25 @@ public class TaskService {
         String safeSortBy = validateSortBy(sortBy);
         Sort.Direction safeDirection = validateDirection(direction);
 
-        Sort sort = Sort.by(safeDirection, safeSortBy);
-        Pageable pageable = PageRequest.of(page, size, sort);
+        Pageable pageable = PageRequest.of(page, size, Sort.by(safeDirection, safeSortBy));
 
         return taskRepository.findAll(
-                TaskSpecifications.withFilters(
-                        title,
-                        completed,
-                        priority,
-                        dueAfter,
-                        dueBefore,
-                        dueDate
-                ),
+                TaskSpecifications.withFilters(title, completed, priority, dueAfter, dueBefore, dueDate),
                 pageable
         );
     }
 
+    // Internal — no ownership check (used by comment service etc.)
     public Task getTaskById(Long id) {
         return taskRepository.findById(id)
                 .orElseThrow(() -> new TaskNotFoundException(id));
     }
 
-    @Transactional
-    public Task createTask(CreateTaskRequest request) {
-        AppUser user = userService.getUserById(request.getUserId());
-
-        Task task = new Task(
-                request.getTitle(),
-                false,
-                request.getPriority(),
-                request.getDueDate(),
-                user
-        );
-
-        return taskRepository.save(task);
-    }
-
-    @Transactional
-    public Task updateTask(Long id, UpdateTaskRequest request) {
+    // Controller-facing — ownership enforced
+    public Task getTaskById(Long id, AppUser currentUser) {
         Task task = getTaskById(id);
-
-        task.setTitle(request.getTitle());
-        task.setCompleted(request.isCompleted());
-        task.setPriority(request.getPriority());
-        task.setDueDate(request.getDueDate());
-
-        return taskRepository.save(task);
-    }
-
-    @Transactional
-    public Task patchTask(Long id, PatchTaskRequest request) {
-        Task task = getTaskById(id);
-
-        if (request.getTitle() != null) {
-            task.setTitle(request.getTitle());
-        }
-
-        if (request.getCompleted() != null) {
-            task.setCompleted(request.getCompleted());
-        }
-
-        if (request.getPriority() != null) {
-            task.setPriority(request.getPriority());
-        }
-
-        if (request.getDueDate() != null) {
-            task.setDueDate(request.getDueDate());
-        }
-
-        return taskRepository.save(task);
-    }
-
-    @Transactional
-    public Task completeTask(Long id) {
-        Task task = getTaskById(id);
-
-        if (task.isCompleted()) {
-            throw new TaskAlreadyCompletedException(id);
-        }
-
-        task.setCompleted(true);
-        return taskRepository.save(task);
-    }
-
-    @Transactional
-    public void deleteTask(Long id) {
-        Task task = getTaskById(id);
-        taskRepository.delete(task);
-    }
-
-    private String validateSortBy(String sortBy) {
-        List<String> allowedSortFields = List.of(
-                "id",
-                "title",
-                "completed",
-                "priority",
-                "dueDate",
-                "createdAt",
-                "updatedAt"
-        );
-
-        if (!allowedSortFields.contains(sortBy)) {
-            throw new IllegalArgumentException("Invalid sort field: " + sortBy);
-        }
-
-        return sortBy;
-    }
-
-    private Sort.Direction validateDirection(String direction) {
-        if (direction.equalsIgnoreCase("asc")) {
-            return Sort.Direction.ASC;
-        }
-
-        if (direction.equalsIgnoreCase("desc")) {
-            return Sort.Direction.DESC;
-        }
-
-        throw new IllegalArgumentException("Invalid sort direction: " + direction);
-    }
-
-    @Transactional
-    public Task reopenTask(Long id) {
-        Task task = getTaskById(id);
-        task.setCompleted(false);
-        return taskRepository.save(task);
+        checkOwnership(task, currentUser);
+        return task;
     }
 
     public Page<Task> getTasksByUserId(
@@ -209,11 +104,7 @@ public class TaskService {
         String safeSortBy = validateSortBy(sortBy);
         Sort.Direction safeDirection = validateDirection(direction);
 
-        Pageable pageable = PageRequest.of(
-                page,
-                size,
-                Sort.by(safeDirection, safeSortBy)
-        );
+        Pageable pageable = PageRequest.of(page, size, Sort.by(safeDirection, safeSortBy));
 
         return taskRepository.findByUserId(userId, pageable);
     }
@@ -230,13 +121,104 @@ public class TaskService {
         String safeSortBy = validateSortBy(sortBy);
         Sort.Direction safeDirection = validateDirection(direction);
 
-        Pageable pageable = PageRequest.of(
-                page,
-                size,
-                Sort.by(safeDirection, safeSortBy)
-        );
+        Pageable pageable = PageRequest.of(page, size, Sort.by(safeDirection, safeSortBy));
 
         return taskRepository.findByUserIdAndCompleted(userId, true, pageable);
     }
 
+    // ─── Write ────────────────────────────────────────────────────────────────
+
+    @Transactional
+    public Task createTask(AppUser currentUser, CreateTaskRequest request) {
+        Task task = new Task(
+                request.getTitle(),
+                false,
+                request.getPriority(),
+                request.getDueDate(),
+                currentUser
+        );
+        return taskRepository.save(task);
+    }
+
+    @Transactional
+    public Task updateTask(Long id, UpdateTaskRequest request, AppUser currentUser) {
+        Task task = getTaskById(id);
+        checkOwnership(task, currentUser);
+
+        task.setTitle(request.getTitle());
+        task.setCompleted(request.isCompleted());
+        task.setPriority(request.getPriority());
+        task.setDueDate(request.getDueDate());
+
+        return taskRepository.save(task);
+    }
+
+    @Transactional
+    public Task patchTask(Long id, PatchTaskRequest request, AppUser currentUser) {
+        Task task = getTaskById(id);
+        checkOwnership(task, currentUser);
+
+        if (request.getTitle() != null)     task.setTitle(request.getTitle());
+        if (request.getCompleted() != null) task.setCompleted(request.getCompleted());
+        if (request.getPriority() != null)  task.setPriority(request.getPriority());
+        if (request.getDueDate() != null)   task.setDueDate(request.getDueDate());
+
+        return taskRepository.save(task);
+    }
+
+    @Transactional
+    public Task completeTask(Long id, AppUser currentUser) {
+        Task task = getTaskById(id);
+        checkOwnership(task, currentUser);
+
+        if (task.isCompleted()) {
+            throw new TaskAlreadyCompletedException(id);
+        }
+
+        task.setCompleted(true);
+        return taskRepository.save(task);
+    }
+
+    @Transactional
+    public Task reopenTask(Long id, AppUser currentUser) {
+        Task task = getTaskById(id);
+        checkOwnership(task, currentUser);
+        task.setCompleted(false);
+        return taskRepository.save(task);
+    }
+
+    @Transactional
+    public void deleteTask(Long id, AppUser currentUser) {
+        Task task = getTaskById(id);
+        checkOwnership(task, currentUser);
+        taskRepository.delete(task);
+    }
+
+    // ─── Helpers ──────────────────────────────────────────────────────────────
+
+    /**
+     * Admins may access any task. Regular users may only access their own.
+     */
+    private void checkOwnership(Task task, AppUser currentUser) {
+        if (currentUser.getRole() == UserRole.ADMIN) return;
+        if (!task.getUser().getId().equals(currentUser.getId())) {
+            throw new AccessDeniedException("You do not have permission to access this task");
+        }
+    }
+
+    private String validateSortBy(String sortBy) {
+        List<String> allowed = List.of(
+                "id", "title", "completed", "priority", "dueDate", "createdAt", "updatedAt"
+        );
+        if (!allowed.contains(sortBy)) {
+            throw new IllegalArgumentException("Invalid sort field: " + sortBy);
+        }
+        return sortBy;
+    }
+
+    private Sort.Direction validateDirection(String direction) {
+        if (direction.equalsIgnoreCase("asc"))  return Sort.Direction.ASC;
+        if (direction.equalsIgnoreCase("desc")) return Sort.Direction.DESC;
+        throw new IllegalArgumentException("Invalid sort direction: " + direction);
+    }
 }

@@ -7,6 +7,9 @@ import com.example.todo.common.exception.BadRequestException;
 import com.example.todo.common.exception.CommentNotFoundException;
 import com.example.todo.task.entity.Task;
 import com.example.todo.task.service.TaskService;
+import com.example.todo.user.entity.AppUser;
+import com.example.todo.user.entity.UserRole;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,19 +31,16 @@ public class TaskCommentService {
     }
 
     public List<TaskComment> getCommentsByTaskId(Long taskId) {
-        taskService.getTaskById(taskId);
+        taskService.getTaskById(taskId); // verify task exists
         return taskCommentRepository.findByTaskIdOrderByCreatedAtDesc(taskId);
     }
 
     @Transactional
-    public TaskComment createComment(Long taskId, CreateTaskCommentRequest request) {
+    public TaskComment createComment(Long taskId, AppUser currentUser, CreateTaskCommentRequest request) {
         Task task = taskService.getTaskById(taskId);
+        checkTaskOwnership(task, currentUser);
 
-        TaskComment comment = new TaskComment(
-                request.getContent(),
-                task
-        );
-
+        TaskComment comment = new TaskComment(request.getContent(), task);
         return taskCommentRepository.save(comment);
     }
 
@@ -48,9 +48,11 @@ public class TaskCommentService {
     public TaskComment updateComment(
             Long taskId,
             Long commentId,
+            AppUser currentUser,
             CreateTaskCommentRequest request
     ) {
-        taskService.getTaskById(taskId);
+        Task task = taskService.getTaskById(taskId);
+        checkTaskOwnership(task, currentUser);
 
         TaskComment comment = taskCommentRepository.findById(commentId)
                 .orElseThrow(() -> new CommentNotFoundException(commentId));
@@ -60,13 +62,13 @@ public class TaskCommentService {
         }
 
         comment.setContent(request.getContent());
-
         return taskCommentRepository.save(comment);
     }
 
     @Transactional
-    public void deleteComment(Long taskId, Long commentId) {
-        taskService.getTaskById(taskId);
+    public void deleteComment(Long taskId, Long commentId, AppUser currentUser) {
+        Task task = taskService.getTaskById(taskId);
+        checkTaskOwnership(task, currentUser);
 
         TaskComment comment = taskCommentRepository.findById(commentId)
                 .orElseThrow(() -> new CommentNotFoundException(commentId));
@@ -76,5 +78,18 @@ public class TaskCommentService {
         }
 
         taskCommentRepository.delete(comment);
+    }
+
+    // ─── Helper ───────────────────────────────────────────────────────────────
+
+    /**
+     * Admins can manage comments on any task.
+     * Regular users can only manage comments on their own tasks.
+     */
+    private void checkTaskOwnership(Task task, AppUser currentUser) {
+        if (currentUser.getRole() == UserRole.ADMIN) return;
+        if (!task.getUser().getId().equals(currentUser.getId())) {
+            throw new AccessDeniedException("You do not have permission to access this task's comments");
+        }
     }
 }

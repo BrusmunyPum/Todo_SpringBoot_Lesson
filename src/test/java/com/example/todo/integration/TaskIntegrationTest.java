@@ -38,16 +38,13 @@ class TaskIntegrationTest {
     @Autowired private FilterChainProxy springSecurityFilterChain;
     @Autowired private PlatformTransactionManager transactionManager;
 
-    // Real repositories — used for cleanup and verification
     @Autowired private UserRepository userRepository;
     @Autowired private TaskRepository taskRepository;
 
-    // Jackson — created directly (not injected)
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private MockMvc mockMvc;
 
-    // ── Test user credentials ─────────────────────────────────────────────────
     private static final String USERNAME = "integration_user";
     private static final String EMAIL    = "integration@test.com";
     private static final String PASSWORD = "password123";
@@ -59,10 +56,6 @@ class TaskIntegrationTest {
                 .addFilter(springSecurityFilterChain)
                 .build();
 
-        // TransactionTemplate wraps the cleanup in a real transaction.
-        // @BeforeEach runs outside Spring's managed transaction context,
-        // so deleteAll() and deleteByUsername() fail without an explicit transaction.
-        // TransactionTemplate opens one, runs the block, then commits.
         new TransactionTemplate(transactionManager).execute(status -> {
             taskRepository.deleteAll();
             userRepository.deleteByUsername(USERNAME);
@@ -72,11 +65,11 @@ class TaskIntegrationTest {
 
     // ─────────────────────────────────────────────────────────────────────────
     // Full happy-path flow:
-    // Register → Login → Create Task → Get Task → Complete Task → Verify
+    // Register → Login → Create Task → Get Task → Complete Task → Delete
     // ─────────────────────────────────────────────────────────────────────────
 
     @Test
-    @DisplayName("Full flow: register → login → create task → complete task")
+    @DisplayName("Full flow: register → login → create task → complete task → delete")
     void shouldCompleteFullTaskLifecycle() throws Exception {
 
         // ── Step 1: Register ──────────────────────────────────────────────────
@@ -94,10 +87,9 @@ class TaskIntegrationTest {
         .andExpect(status().isCreated())
         .andExpect(jsonPath("$.username").value(USERNAME));
 
-        // Verify user was actually saved in the database
         assertThat(userRepository.existsByUsername(USERNAME)).isTrue();
 
-        // ── Step 2: Login — get a real JWT token ─────────────────────────────
+        // ── Step 2: Login — get a real JWT token ──────────────────────────────
         MvcResult loginResult = mockMvc.perform(
                 post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -112,28 +104,21 @@ class TaskIntegrationTest {
         .andExpect(jsonPath("$.accessToken").exists())
         .andReturn();
 
-        // Extract the real JWT token from the response
-        String responseBody = loginResult.getResponse().getContentAsString();
-        String token = objectMapper.readTree(responseBody)
+        String token = objectMapper.readTree(loginResult.getResponse().getContentAsString())
                 .get("accessToken").asText();
 
         assertThat(token).isNotBlank();
-        assertThat(token.split("\\.")).hasSize(3); // valid JWT: header.payload.signature
+        assertThat(token.split("\\.")).hasSize(3);
 
-        // ── Step 3: Get the user ID (needed to create a task) ─────────────────
-        MvcResult meResult = mockMvc.perform(
+        // ── Step 3: Verify /me resolves the authenticated user ────────────────
+        mockMvc.perform(
                 get("/api/v1/users/me")
                         .header("Authorization", "Bearer " + token)
         )
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.username").value(USERNAME))
-        .andReturn();
+        .andExpect(jsonPath("$.username").value(USERNAME));
 
-        long userId = objectMapper.readTree(
-                meResult.getResponse().getContentAsString()
-        ).get("id").asLong();
-
-        // ── Step 4: Create a task ──────────────────────────────────────────────
+        // ── Step 4: Create a task — owner is set from JWT, not request body ───
         MvcResult createResult = mockMvc.perform(
                 post("/api/v1/tasks")
                         .header("Authorization", "Bearer " + token)
@@ -142,10 +127,9 @@ class TaskIntegrationTest {
                                 {
                                   "title": "Buy groceries",
                                   "priority": "HIGH",
-                                  "dueDate": "2027-12-31",
-                                  "userId": %d
+                                  "dueDate": "2027-12-31"
                                 }
-                                """.formatted(userId))
+                                """)
         )
         .andExpect(status().isCreated())
         .andExpect(jsonPath("$.title").value("Buy groceries"))
@@ -153,14 +137,12 @@ class TaskIntegrationTest {
         .andExpect(jsonPath("$.priority").value("HIGH"))
         .andReturn();
 
-        long taskId = objectMapper.readTree(
-                createResult.getResponse().getContentAsString()
-        ).get("id").asLong();
+        long taskId = objectMapper.readTree(createResult.getResponse().getContentAsString())
+                .get("id").asLong();
 
-        // Verify task was actually saved in the database
         assertThat(taskRepository.findById(taskId)).isPresent();
 
-        // ── Step 5: Get the task by ID ─────────────────────────────────────────
+        // ── Step 5: Get the task by ID ────────────────────────────────────────
         mockMvc.perform(
                 get("/api/v1/tasks/" + taskId)
                         .header("Authorization", "Bearer " + token)
@@ -170,7 +152,7 @@ class TaskIntegrationTest {
         .andExpect(jsonPath("$.title").value("Buy groceries"))
         .andExpect(jsonPath("$.completed").value(false));
 
-        // ── Step 6: Complete the task ──────────────────────────────────────────
+        // ── Step 6: Complete the task ─────────────────────────────────────────
         mockMvc.perform(
                 patch("/api/v1/tasks/" + taskId + "/complete")
                         .header("Authorization", "Bearer " + token)
@@ -178,13 +160,12 @@ class TaskIntegrationTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.completed").value(true));
 
-        // Verify completion was persisted in the real database
         assertThat(taskRepository.findById(taskId))
                 .isPresent()
                 .get()
                 .matches(task -> task.isCompleted(), "task should be completed");
 
-        // ── Step 7: Try to complete again — should get 409 Conflict ───────────
+        // ── Step 7: Complete again — should get 409 Conflict ─────────────────
         mockMvc.perform(
                 patch("/api/v1/tasks/" + taskId + "/complete")
                         .header("Authorization", "Bearer " + token)
@@ -192,7 +173,7 @@ class TaskIntegrationTest {
         .andExpect(status().isConflict())
         .andExpect(jsonPath("$.status").value(409));
 
-        // ── Step 8: Reopen the task ────────────────────────────────────────────
+        // ── Step 8: Reopen the task ───────────────────────────────────────────
         mockMvc.perform(
                 patch("/api/v1/tasks/" + taskId + "/reopen")
                         .header("Authorization", "Bearer " + token)
@@ -200,14 +181,13 @@ class TaskIntegrationTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.completed").value(false));
 
-        // ── Step 9: Delete the task ────────────────────────────────────────────
+        // ── Step 9: Delete the task ───────────────────────────────────────────
         mockMvc.perform(
                 delete("/api/v1/tasks/" + taskId)
                         .header("Authorization", "Bearer " + token)
         )
         .andExpect(status().isNoContent());
 
-        // Verify task was actually deleted from the database
         assertThat(taskRepository.findById(taskId)).isEmpty();
     }
 
@@ -223,7 +203,7 @@ class TaskIntegrationTest {
 
         mockMvc.perform(post("/api/v1/tasks")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"title\":\"test\",\"priority\":\"LOW\",\"userId\":1}"))
+                .content("{\"title\":\"test\",\"priority\":\"LOW\"}"))
                 .andExpect(status().isUnauthorized());
 
         mockMvc.perform(get("/api/v1/users/me"))
@@ -231,7 +211,7 @@ class TaskIntegrationTest {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Validation integration: invalid request body returns 400 with error details
+    // Validation integration: invalid request body returns 400
     // ─────────────────────────────────────────────────────────────────────────
 
     @Test
@@ -256,13 +236,12 @@ class TaskIntegrationTest {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Duplicate registration integration test
+    // Duplicate registration
     // ─────────────────────────────────────────────────────────────────────────
 
     @Test
     @DisplayName("Should return 409 Conflict when registering with duplicate username")
     void shouldRejectDuplicateUsername() throws Exception {
-        // Register once
         mockMvc.perform(
                 post("/api/v1/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -276,7 +255,6 @@ class TaskIntegrationTest {
         )
         .andExpect(status().isCreated());
 
-        // Register again with same username — should fail
         mockMvc.perform(
                 post("/api/v1/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -293,13 +271,12 @@ class TaskIntegrationTest {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Wrong credentials integration test
+    // Wrong credentials
     // ─────────────────────────────────────────────────────────────────────────
 
     @Test
     @DisplayName("Should return 401 with same message for wrong username and wrong password")
     void shouldRejectWrongCredentials() throws Exception {
-        // Register a user first
         mockMvc.perform(
                 post("/api/v1/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -313,7 +290,6 @@ class TaskIntegrationTest {
         )
         .andExpect(status().isCreated());
 
-        // Wrong password
         mockMvc.perform(
                 post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -327,7 +303,6 @@ class TaskIntegrationTest {
         .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.message").value("Invalid username or password"));
 
-        // Wrong username
         mockMvc.perform(
                 post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)

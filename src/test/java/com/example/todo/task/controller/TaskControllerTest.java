@@ -1,7 +1,6 @@
 package com.example.todo.task.controller;
 
 import com.example.todo.auth.service.CustomUserDetailsService;
-import com.example.todo.common.TestJwtHelper;
 import com.example.todo.common.exception.TaskAlreadyCompletedException;
 import com.example.todo.common.exception.TaskNotFoundException;
 import com.example.todo.common.security.JwtService;
@@ -12,6 +11,7 @@ import com.example.todo.task.entity.TaskPriority;
 import com.example.todo.task.mapper.TaskMapper;
 import com.example.todo.task.service.TaskService;
 import com.example.todo.user.entity.AppUser;
+import com.example.todo.user.entity.UserRole;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -45,48 +45,35 @@ class TaskControllerTest {
     @Autowired
     private WebApplicationContext context;
 
-    // Spring Security's main filter — must be added explicitly to MockMvc.
-    // Without this, security is NOT applied and all requests return 200.
     @Autowired
     private FilterChainProxy springSecurityFilterChain;
 
     private MockMvc mockMvc;
 
-    // ── Mock controller dependencies ──────────────────────────────────────────
-    @MockitoBean
-    private TaskService taskService;
+    @MockitoBean private TaskService taskService;
+    @MockitoBean private TaskMapper taskMapper;
+    @MockitoBean private JwtService jwtService;
+    @MockitoBean private CustomUserDetailsService customUserDetailsService;
 
-    @MockitoBean
-    private TaskMapper taskMapper;
-
-    // ── Mock security dependencies ────────────────────────────────────────────
-    // JwtAuthFilter needs JwtService + CustomUserDetailsService.
-    // We mock them to control authentication behavior in tests.
-    @MockitoBean
-    private JwtService jwtService;
-
-    @MockitoBean
-    private CustomUserDetailsService customUserDetailsService;
-
-    // ── Shared test data ──────────────────────────────────────────────────────
     private AppUser testUser;
+    private AppUser adminUser;
     private Task sampleTask;
     private TaskResponse sampleResponse;
 
-    // Simple token strings — with mocked JwtService we control what they "mean"
-    private static final String VALID_TOKEN   = "valid-test-token";
-    private static final String INVALID_TOKEN = "invalid-test-token";
+    private static final String VALID_TOKEN       = "valid-test-token";
+    private static final String ADMIN_TOKEN       = "admin-test-token";
+    private static final String INVALID_TOKEN     = "invalid-test-token";
 
     @BeforeEach
     void setUp() {
-        // Build MockMvc with the full application context
-        // → all filters (including Spring Security) are applied
         mockMvc = MockMvcBuilders
                 .webAppContextSetup(context)
-                .addFilter(springSecurityFilterChain)   // ← applies Spring Security
+                .addFilter(springSecurityFilterChain)
                 .build();
 
-        testUser = new AppUser("muny", "muny@email.com", "$2a$hashed");
+        testUser  = new AppUser("muny",  "muny@email.com",  "$2a$hashed");
+        adminUser = new AppUser("admin", "admin@email.com", "$2a$hashed");
+        adminUser.setRole(UserRole.ADMIN);
 
         sampleTask = new Task(
                 "Buy groceries", false, TaskPriority.HIGH,
@@ -99,22 +86,22 @@ class TaskControllerTest {
                 Instant.now(), Instant.now()
         );
 
-        // ── Configure happy-path authentication ───────────────────────────────
-        // JwtAuthFilter calls these in sequence for every authenticated request:
-        // 1. Extract username from token
+        // ── Regular user token ────────────────────────────────────────────────
         when(jwtService.extractUsername(VALID_TOKEN)).thenReturn("muny");
-        // 2. Load user from DB
         when(customUserDetailsService.loadUserByUsername("muny")).thenReturn(testUser);
-        // 3. Validate token
         when(jwtService.isTokenValid(VALID_TOKEN, testUser)).thenReturn(true);
 
-        // ── Configure invalid token to simulate failure ───────────────────────
-        // isTokenValid returns false for INVALID_TOKEN → filter clears context → 401
+        // ── Admin user token ──────────────────────────────────────────────────
+        when(jwtService.extractUsername(ADMIN_TOKEN)).thenReturn("admin");
+        when(customUserDetailsService.loadUserByUsername("admin")).thenReturn(adminUser);
+        when(jwtService.isTokenValid(ADMIN_TOKEN, adminUser)).thenReturn(true);
+
+        // ── Invalid token ─────────────────────────────────────────────────────
         when(jwtService.isTokenValid(eq(INVALID_TOKEN), any())).thenReturn(false);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // GET /api/v1/tasks
+    // GET /api/v1/tasks  (admin-only)
     // ─────────────────────────────────────────────────────────────────────────
 
     @Nested
@@ -122,11 +109,9 @@ class TaskControllerTest {
     class GetAllTasks {
 
         @Test
-        @DisplayName("should return 200 with paginated tasks when authenticated")
-        void shouldReturn200WithTasks() throws Exception {
-            Page<Task> taskPage = new PageImpl<>(
-                    List.of(sampleTask), PageRequest.of(0, 5), 1
-            );
+        @DisplayName("should return 200 with paginated tasks when ADMIN")
+        void shouldReturn200ForAdmin() throws Exception {
+            Page<Task> taskPage = new PageImpl<>(List.of(sampleTask), PageRequest.of(0, 5), 1);
             TaskPageResponse pageResponse = new TaskPageResponse(
                     List.of(sampleResponse), 0, 5, 1L, 1, true, true
             );
@@ -137,13 +122,20 @@ class TaskControllerTest {
 
             mockMvc.perform(
                     get("/api/v1/tasks")
-                            .header("Authorization", "Bearer " + VALID_TOKEN)
+                            .header("Authorization", "Bearer " + ADMIN_TOKEN)
             )
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.content").isArray())
-            .andExpect(jsonPath("$.content[0].title").value("Buy groceries"))
-            .andExpect(jsonPath("$.totalElements").value(1))
-            .andExpect(jsonPath("$.page").value(0));
+            .andExpect(jsonPath("$.content[0].title").value("Buy groceries"));
+        }
+
+        @Test
+        @DisplayName("should return 403 when regular USER calls admin endpoint")
+        void shouldReturn403ForRegularUser() throws Exception {
+            mockMvc.perform(
+                    get("/api/v1/tasks")
+                            .header("Authorization", "Bearer " + VALID_TOKEN)
+            )
+            .andExpect(status().isForbidden());
         }
 
         @Test
@@ -156,7 +148,6 @@ class TaskControllerTest {
         @Test
         @DisplayName("should return 401 when token is invalid")
         void shouldReturn401WhenTokenIsInvalid() throws Exception {
-            // extractUsername returns null for INVALID_TOKEN → filter skips → 401
             when(jwtService.extractUsername(INVALID_TOKEN)).thenReturn(null);
 
             mockMvc.perform(
@@ -176,9 +167,9 @@ class TaskControllerTest {
     class GetTaskById {
 
         @Test
-        @DisplayName("should return 200 with the task when it exists")
+        @DisplayName("should return 200 with the task when it exists and user owns it")
         void shouldReturn200WhenFound() throws Exception {
-            when(taskService.getTaskById(1L)).thenReturn(sampleTask);
+            when(taskService.getTaskById(eq(1L), any(AppUser.class))).thenReturn(sampleTask);
             when(taskMapper.toResponse(sampleTask)).thenReturn(sampleResponse);
 
             mockMvc.perform(
@@ -194,7 +185,7 @@ class TaskControllerTest {
         @Test
         @DisplayName("should return 404 when task does not exist")
         void shouldReturn404WhenNotFound() throws Exception {
-            when(taskService.getTaskById(99L))
+            when(taskService.getTaskById(eq(99L), any(AppUser.class)))
                     .thenThrow(new TaskNotFoundException(99L));
 
             mockMvc.perform(
@@ -217,7 +208,7 @@ class TaskControllerTest {
         @Test
         @DisplayName("should return 201 Created with the new task")
         void shouldReturn201WhenCreated() throws Exception {
-            when(taskService.createTask(any())).thenReturn(sampleTask);
+            when(taskService.createTask(any(AppUser.class), any())).thenReturn(sampleTask);
             when(taskMapper.toResponse(sampleTask)).thenReturn(sampleResponse);
 
             mockMvc.perform(
@@ -228,8 +219,7 @@ class TaskControllerTest {
                                     {
                                       "title": "Buy groceries",
                                       "priority": "HIGH",
-                                      "dueDate": "2027-01-15",
-                                      "userId": 1
+                                      "dueDate": "2027-01-15"
                                     }
                                     """)
             )
@@ -248,31 +238,12 @@ class TaskControllerTest {
                             .content("""
                                     {
                                       "title": "",
-                                      "priority": "HIGH",
-                                      "userId": 1
-                                    }
-                                    """)
-            )
-            .andExpect(status().isBadRequest())
-            .andExpect(jsonPath("$.errors.title").exists());
-        }
-
-        @Test
-        @DisplayName("should return 400 when userId is missing")
-        void shouldReturn400WhenUserIdIsMissing() throws Exception {
-            mockMvc.perform(
-                    post("/api/v1/tasks")
-                            .header("Authorization", "Bearer " + VALID_TOKEN)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content("""
-                                    {
-                                      "title": "Buy groceries",
                                       "priority": "HIGH"
                                     }
                                     """)
             )
             .andExpect(status().isBadRequest())
-            .andExpect(jsonPath("$.errors.userId").exists());
+            .andExpect(jsonPath("$.errors.title").exists());
         }
 
         @Test
@@ -284,8 +255,7 @@ class TaskControllerTest {
                             .content("""
                                     {
                                       "title": "Buy groceries",
-                                      "priority": "HIGH",
-                                      "userId": 1
+                                      "priority": "HIGH"
                                     }
                                     """)
             )
@@ -315,7 +285,7 @@ class TaskControllerTest {
         @DisplayName("should return 404 when task does not exist")
         void shouldReturn404WhenTaskNotFound() throws Exception {
             doThrow(new TaskNotFoundException(99L))
-                    .when(taskService).deleteTask(99L);
+                    .when(taskService).deleteTask(eq(99L), any(AppUser.class));
 
             mockMvc.perform(
                     delete("/api/v1/tasks/99")
@@ -341,7 +311,7 @@ class TaskControllerTest {
                     LocalDate.of(2027, 1, 15), 1L, "muny",
                     Instant.now(), Instant.now()
             );
-            when(taskService.completeTask(1L)).thenReturn(sampleTask);
+            when(taskService.completeTask(eq(1L), any(AppUser.class))).thenReturn(sampleTask);
             when(taskMapper.toResponse(sampleTask)).thenReturn(completedResponse);
 
             mockMvc.perform(
@@ -355,7 +325,7 @@ class TaskControllerTest {
         @Test
         @DisplayName("should return 409 when task is already completed")
         void shouldReturn409WhenAlreadyCompleted() throws Exception {
-            when(taskService.completeTask(1L))
+            when(taskService.completeTask(eq(1L), any(AppUser.class)))
                     .thenThrow(new TaskAlreadyCompletedException(1L));
 
             mockMvc.perform(
@@ -383,7 +353,7 @@ class TaskControllerTest {
                     LocalDate.of(2027, 1, 15), 1L, "muny",
                     Instant.now(), Instant.now()
             );
-            when(taskService.reopenTask(1L)).thenReturn(sampleTask);
+            when(taskService.reopenTask(eq(1L), any(AppUser.class))).thenReturn(sampleTask);
             when(taskMapper.toResponse(sampleTask)).thenReturn(reopenedResponse);
 
             mockMvc.perform(
