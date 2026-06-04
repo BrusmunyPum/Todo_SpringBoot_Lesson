@@ -78,6 +78,17 @@
 		</dependency>
 
 		<!-- ═══════════════════════════════════════════════════════
+		     Rate Limiting
+		     bucket4j-core : token-bucket algorithm for per-IP
+		                     brute-force protection on auth endpoints
+		     ═══════════════════════════════════════════════════════ -->
+		<dependency>
+			<groupId>com.bucket4j</groupId>
+			<artifactId>bucket4j-core</artifactId>
+			<version>8.10.1</version>
+		</dependency>
+
+		<!-- ═══════════════════════════════════════════════════════
 		     JWT
 		     jjwt-api   : compile-time API (Jwts, Claims, etc.)
 		     jjwt-impl  : runtime implementation

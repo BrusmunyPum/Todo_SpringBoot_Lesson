@@ -29,20 +29,21 @@ import java.util.List;
 public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
+    private final RateLimitFilter rateLimitFilter;
     private final CustomUserDetailsService userDetailsService;
     private final CustomAuthenticationEntryPoint authenticationEntryPoint;
 
-    // Read allowed origins from application.properties
-    // e.g.  cors.allowed-origins=http://localhost:3000,https://myapp.com
     @Value("${cors.allowed-origins}")
     private List<String> allowedOrigins;
 
     public SecurityConfig(
             JwtAuthFilter jwtAuthFilter,
+            RateLimitFilter rateLimitFilter,
             CustomUserDetailsService userDetailsService,
             CustomAuthenticationEntryPoint authenticationEntryPoint
     ) {
         this.jwtAuthFilter = jwtAuthFilter;
+        this.rateLimitFilter = rateLimitFilter;
         this.userDetailsService = userDetailsService;
         this.authenticationEntryPoint = authenticationEntryPoint;
     }
@@ -66,33 +67,20 @@ public class SecurityConfig {
         return config.getAuthenticationManager();
     }
 
-    // ─── CORS Configuration ───────────────────────────────────────────────────
+    // ─── CORS ─────────────────────────────────────────────────────────────────
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-
-        // Which frontends are allowed to call this API
         config.setAllowedOrigins(allowedOrigins);
-
-        // Which HTTP methods the frontend can use
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-
-        // Which headers the frontend can send
-        // Authorization is required for JWT; Content-Type for JSON body
         config.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept"));
-
-        // Allow the browser to read the Authorization header in responses
         config.setExposedHeaders(List.of("Authorization"));
-
-        // Allow cookies and Authorization headers to be sent
         config.setAllowCredentials(true);
-
-        // Cache preflight response for 1 hour (reduces OPTIONS requests)
         config.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", config); // apply to ALL endpoints
+        source.registerCorsConfiguration("/**", config);
         return source;
     }
 
@@ -101,7 +89,7 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                .cors(cors -> cors.configurationSource(corsConfigurationSource())) // ← enable CORS
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/v1/auth/**").permitAll()
@@ -121,6 +109,10 @@ public class SecurityConfig {
                         .authenticationEntryPoint(authenticationEntryPoint)
                 )
                 .authenticationProvider(authenticationProvider())
+                // Both filters are anchored before UsernamePasswordAuthenticationFilter.
+                // Spring Security processes them in insertion order, so:
+                // RateLimitFilter → JwtAuthFilter → UsernamePasswordAuthenticationFilter
+                .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
